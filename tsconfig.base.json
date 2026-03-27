@@ -12,9 +12,8 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@ct/shared/*": [
-        "packages/shared/src/*"
-      ]
+      "@ct/shared": ["packages/shared/src/index.ts"],
+      "@ct/shared/*": ["packages/shared/src/*"]
     }
   }
 }

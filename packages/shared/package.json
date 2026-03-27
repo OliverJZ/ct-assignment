@@ -8,5 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "node -e \"console.log('No tests yet for shared')\""
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2"
   }
 }
