@@ -115,13 +115,13 @@ Completed so far:
 3. Product CRUD endpoints with paginated product listing
 4. Review CRUD and paginated review listing in `product-service`
 5. Review lifecycle event publication from `product-service` to `review-events`
+6. `review-processor-service` consumer and rating projection persistence
 
 Next:
 
-1. Implement `review-processor-service` consumer and rating projection persistence
-2. Add Redis caching for review lists and product ratings
-3. Add observability to real HTTP and event-processing flows
-4. Expand integration and end-to-end tests
+1. Add Redis caching for review lists and product ratings
+2. Add observability to real HTTP and event-processing flows
+3. Expand integration and end-to-end tests
 
 ## Current API surface
 
@@ -156,6 +156,20 @@ The next implemented step is broker publication from `product-service` when revi
 The event payload intentionally stays small. The review processor can recompute the rating from canonical database state, so it only needs to know which product and review changed.
 
 For local development, host-based services should connect to Redpanda through `localhost:19092`, which matches the external listener exposed by `docker-compose.yml`.
+
+## Review processor behavior
+
+`review-processor-service` consumes `review-events` in a consumer group and processes events keyed by `productId`.
+
+Current processor behavior:
+
+- logs when a review lifecycle event is received
+- skips events already present in `processed_events`
+- recomputes `averageRating` from canonical `reviews` data for the affected product
+- upserts `product_ratings`
+- records the processed event for idempotency
+
+The current implementation intentionally recomputes from source-of-truth reviews rather than doing incremental arithmetic. That is slightly less optimized, but simpler and safer for correctness in an interview assignment.
 
 ## Data model
 

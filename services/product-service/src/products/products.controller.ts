@@ -5,22 +5,31 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Patch,
+  ParseUUIDPipe,
   Post,
   Query,
 } from "@nestjs/common";
 
-import type { CreateProductDto } from "./dto/create-product.dto";
-import type { ListProductsQueryDto } from "./dto/list-products-query.dto";
+// Nest validation needs runtime class metadata for request DTOs.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { CreateProductDto } from "./dto/create-product.dto";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { ListProductsQueryDto } from "./dto/list-products-query.dto";
 import type { PaginatedProductsResponseDto } from "./dto/paginated-products-response.dto";
 import type { ProductResponseDto } from "./dto/product-response.dto";
-import type { UpdateProductDto } from "./dto/update-product.dto";
-import type { ProductsService } from "./products.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { UpdateProductDto } from "./dto/update-product.dto";
+import { ProductsService } from "./products.service";
 
 @Controller("products")
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    @Inject(ProductsService)
+    private readonly productsService: ProductsService,
+  ) {}
 
   @Post()
   create(
@@ -37,13 +46,15 @@ export class ProductsController {
   }
 
   @Get(":productId")
-  findOne(@Param("productId") productId: string): Promise<ProductResponseDto> {
+  findOne(
+    @Param("productId", new ParseUUIDPipe()) productId: string,
+  ): Promise<ProductResponseDto> {
     return this.productsService.findOne(productId);
   }
 
   @Patch(":productId")
   update(
-    @Param("productId") productId: string,
+    @Param("productId", new ParseUUIDPipe()) productId: string,
     @Body() updateProductDto: UpdateProductDto,
   ): Promise<ProductResponseDto> {
     return this.productsService.update(productId, updateProductDto);
@@ -51,7 +62,9 @@ export class ProductsController {
 
   @Delete(":productId")
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param("productId") productId: string): Promise<void> {
+  async remove(
+    @Param("productId", new ParseUUIDPipe()) productId: string,
+  ): Promise<void> {
     await this.productsService.remove(productId);
   }
 }

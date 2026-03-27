@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 
-import type { PrismaService } from "../database/prisma.service";
-import type { ReviewEventsPublisher } from "../events/review-events.publisher";
+import { PrismaService } from "../database/prisma.service";
+import { ReviewEventsPublisher } from "../events/review-events.publisher";
 import type { CreateReviewDto } from "./dto/create-review.dto";
 import type { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
 import type { PaginatedReviewsResponseDto } from "./dto/paginated-reviews-response.dto";
@@ -11,7 +11,8 @@ import type { UpdateReviewDto } from "./dto/update-review.dto";
 @Injectable()
 export class ReviewsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ReviewEventsPublisher)
     private readonly reviewEventsPublisher: ReviewEventsPublisher,
   ) {}
 

@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
-    "start:dev": "tsx watch src/main.ts",
+    "start:dev": "node --watch --require ts-node/register src/main.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run"
   },
@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.3",
     "vitest": "^3.2.4"
   }

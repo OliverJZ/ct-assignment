@@ -5,26 +5,35 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Patch,
+  ParseUUIDPipe,
   Post,
   Query,
 } from "@nestjs/common";
 
-import type { CreateReviewDto } from "./dto/create-review.dto";
-import type { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
+// Nest validation needs runtime class metadata for request DTOs.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { CreateReviewDto } from "./dto/create-review.dto";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
 import type { PaginatedReviewsResponseDto } from "./dto/paginated-reviews-response.dto";
 import type { ReviewResponseDto } from "./dto/review-response.dto";
-import type { UpdateReviewDto } from "./dto/update-review.dto";
-import type { ReviewsService } from "./reviews.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { UpdateReviewDto } from "./dto/update-review.dto";
+import { ReviewsService } from "./reviews.service";
 
 @Controller("products/:productId/reviews")
 export class ReviewsController {
-  constructor(private readonly reviewsService: ReviewsService) {}
+  constructor(
+    @Inject(ReviewsService)
+    private readonly reviewsService: ReviewsService,
+  ) {}
 
   @Post()
   create(
-    @Param("productId") productId: string,
+    @Param("productId", new ParseUUIDPipe()) productId: string,
     @Body() createReviewDto: CreateReviewDto,
   ): Promise<ReviewResponseDto> {
     return this.reviewsService.create(productId, createReviewDto);
@@ -32,7 +41,7 @@ export class ReviewsController {
 
   @Get()
   findAll(
-    @Param("productId") productId: string,
+    @Param("productId", new ParseUUIDPipe()) productId: string,
     @Query() query: ListReviewsQueryDto,
   ): Promise<PaginatedReviewsResponseDto> {
     return this.reviewsService.findAll(productId, query);
@@ -40,8 +49,8 @@ export class ReviewsController {
 
   @Patch(":reviewId")
   update(
-    @Param("productId") productId: string,
-    @Param("reviewId") reviewId: string,
+    @Param("productId", new ParseUUIDPipe()) productId: string,
+    @Param("reviewId", new ParseUUIDPipe()) reviewId: string,
     @Body() updateReviewDto: UpdateReviewDto,
   ): Promise<ReviewResponseDto> {
     return this.reviewsService.update(productId, reviewId, updateReviewDto);
@@ -50,8 +59,8 @@ export class ReviewsController {
   @Delete(":reviewId")
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
-    @Param("productId") productId: string,
-    @Param("reviewId") reviewId: string,
+    @Param("productId", new ParseUUIDPipe()) productId: string,
+    @Param("reviewId", new ParseUUIDPipe()) reviewId: string,
   ): Promise<void> {
     await this.reviewsService.remove(productId, reviewId);
   }

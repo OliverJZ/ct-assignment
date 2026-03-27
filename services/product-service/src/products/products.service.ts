@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 
-import type { PrismaService } from "../database/prisma.service";
+import { PrismaService } from "../database/prisma.service";
 import type { CreateProductDto } from "./dto/create-product.dto";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto";
 import type { PaginatedProductsResponseDto } from "./dto/paginated-products-response.dto";
@@ -10,7 +10,7 @@ import type { UpdateProductDto } from "./dto/update-product.dto";
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async create(
     createProductDto: CreateProductDto,

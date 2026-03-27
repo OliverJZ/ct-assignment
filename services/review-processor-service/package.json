@@ -5,18 +5,23 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
-    "start:dev": "tsx watch src/main.ts",
+    "start:dev": "node --watch --require ts-node/register src/main.ts",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "node -e \"console.log('No tests yet for review-processor-service')\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.11",
     "@nestjs/core": "^11.0.11",
+    "@nestjs/platform-express": "^11.0.11",
+    "@prisma/client": "^6.16.2",
+    "kafkajs": "^2.2.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
-    "tsx": "^4.19.3"
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.3",
+    "vitest": "^3.2.4"
   }
 }
