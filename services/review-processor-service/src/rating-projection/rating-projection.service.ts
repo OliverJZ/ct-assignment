@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 
+import { CacheService } from "../cache/cache.service";
 import { PrismaService } from "../database/prisma.service";
 
 type ProcessReviewEventInput = {
@@ -19,7 +20,10 @@ type ProcessReviewEventResult = {
 
 @Injectable()
 export class RatingProjectionService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(CacheService) private readonly cache: CacheService,
+  ) {}
 
   async processReviewEvent(
     input: ProcessReviewEventInput,
@@ -90,6 +94,8 @@ export class RatingProjectionService {
 
       throw error;
     }
+
+    await this.cache.delete(this.cache.productDetailKey(input.productId));
 
     return { status: "processed" };
   }

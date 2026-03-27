@@ -116,12 +116,12 @@ Completed so far:
 4. Review CRUD and paginated review listing in `product-service`
 5. Review lifecycle event publication from `product-service` to `review-events`
 6. `review-processor-service` consumer and rating projection persistence
+7. Redis caching for product detail responses and review-list responses
 
 Next:
 
-1. Add Redis caching for review lists and product ratings
-2. Add observability to real HTTP and event-processing flows
-3. Expand integration and end-to-end tests
+1. Add observability to real HTTP and event-processing flows
+2. Expand integration and end-to-end tests
 
 ## Current API surface
 
@@ -143,6 +143,7 @@ Current API behavior:
 - product list and review list are paginated
 - review `rating` is validated as an integer in the range `1..5`
 - `averageRating` is exposed as derived state and may be `null` until the processor is implemented
+- product detail reads and review-list reads are cached in Redis
 
 ## Event publication approach
 
@@ -170,6 +171,17 @@ Current processor behavior:
 - records the processed event for idempotency
 
 The current implementation intentionally recomputes from source-of-truth reviews rather than doing incremental arithmetic. That is slightly less optimized, but simpler and safer for correctness in an interview assignment.
+
+## Caching strategy
+
+The assignment requires cached product reviews and cached average ratings. The current implementation handles that with Redis-backed cache-aside behavior.
+
+- `product-service` caches product detail responses by product ID
+- `product-service` caches paginated review-list responses by product ID, page, and limit
+- review mutations invalidate all cached review-list pages for the affected product
+- the review processor invalidates the cached product detail after recomputing `averageRating`
+
+This means review-list cache invalidation is immediate on canonical writes, while product-detail cache invalidation follows the eventual-consistency boundary of the asynchronous rating projection.
 
 ## Data model
 

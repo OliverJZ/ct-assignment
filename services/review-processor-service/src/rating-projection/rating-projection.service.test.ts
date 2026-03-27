@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CacheService } from "../cache/cache.service";
 import type { PrismaService } from "../database/prisma.service";
 import { RatingProjectionService } from "./rating-projection.service";
 
@@ -17,11 +18,18 @@ describe("RatingProjectionService", () => {
     },
   } as unknown as PrismaService;
 
+  const cache = {
+    delete: vi.fn(),
+    productDetailKey: vi.fn(
+      (productId: string) => `product:${productId}:detail`,
+    ),
+  } as unknown as CacheService;
+
   let service: RatingProjectionService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new RatingProjectionService(prisma);
+    service = new RatingProjectionService(prisma, cache);
   });
 
   it("skips an already processed event", async () => {
@@ -72,6 +80,7 @@ describe("RatingProjectionService", () => {
         offset: BigInt(42),
       }),
     });
+    expect(cache.delete).toHaveBeenCalledWith("product:product-1:detail");
   });
 
   it("stores null average for products without reviews", async () => {

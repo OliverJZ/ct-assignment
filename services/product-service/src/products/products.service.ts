@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 
+import { CacheService } from "../cache/cache.service";
 import { PrismaService } from "../database/prisma.service";
 import type { CreateProductDto } from "./dto/create-product.dto";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto";
@@ -10,7 +11,10 @@ import type { UpdateProductDto } from "./dto/update-product.dto";
 
 @Injectable()
 export class ProductsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(CacheService) private readonly cache: CacheService,
+  ) {}
 
   async create(
     createProductDto: CreateProductDto,
@@ -24,7 +28,9 @@ export class ProductsService {
       include: { rating: true },
     });
 
-    return ProductResponseDto.fromProduct(product);
+    const response = ProductResponseDto.fromProduct(product);
+    await this.cache.setJson(this.cache.productDetailKey(product.id), response);
+    return response;
   }
 
   async findAll(
@@ -52,6 +58,14 @@ export class ProductsService {
   }
 
   async findOne(productId: string): Promise<ProductResponseDto> {
+    const cacheKey = this.cache.productDetailKey(productId);
+    const cachedProduct =
+      await this.cache.getJson<ProductResponseDto>(cacheKey);
+
+    if (cachedProduct) {
+      return cachedProduct;
+    }
+
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
       include: { rating: true },
@@ -61,7 +75,9 @@ export class ProductsService {
       throw new NotFoundException(`Product ${productId} not found`);
     }
 
-    return ProductResponseDto.fromProduct(product);
+    const response = ProductResponseDto.fromProduct(product);
+    await this.cache.setJson(cacheKey, response);
+    return response;
   }
 
   async update(
@@ -86,12 +102,18 @@ export class ProductsService {
       include: { rating: true },
     });
 
-    return ProductResponseDto.fromProduct(product);
+    const response = ProductResponseDto.fromProduct(product);
+    await this.cache.setJson(this.cache.productDetailKey(productId), response);
+    return response;
   }
 
   async remove(productId: string): Promise<void> {
     await this.ensureProductExists(productId);
     await this.prisma.product.delete({ where: { id: productId } });
+    await this.cache.delete(this.cache.productDetailKey(productId));
+    await this.cache.deleteByPattern(
+      this.cache.productReviewsPattern(productId),
+    );
   }
 
   private async ensureProductExists(productId: string): Promise<void> {

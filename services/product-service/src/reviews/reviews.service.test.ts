@@ -1,6 +1,7 @@
 import { NotFoundException } from "@nestjs/common";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CacheService } from "../cache/cache.service";
 import type { PrismaService } from "../database/prisma.service";
 import type { ReviewEventsPublisher } from "../events/review-events.publisher";
 import { ReviewsService } from "./reviews.service";
@@ -41,11 +42,24 @@ describe("ReviewsService", () => {
     publishDeleted: vi.fn(),
   } as unknown as ReviewEventsPublisher;
 
+  const cache = {
+    getJson: vi.fn(),
+    setJson: vi.fn(),
+    deleteByPattern: vi.fn(),
+    productReviewsPattern: vi.fn(
+      (productId: string) => `product:${productId}:reviews:*`,
+    ),
+    productReviewsKey: vi.fn(
+      (productId: string, page: number, limit: number) =>
+        `product:${productId}:reviews:page:${page}:limit:${limit}`,
+    ),
+  } as unknown as CacheService;
+
   let service: ReviewsService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new ReviewsService(prisma, reviewEventsPublisher);
+    service = new ReviewsService(prisma, cache, reviewEventsPublisher);
   });
 
   it("creates a review for an existing product", async () => {
@@ -70,9 +84,11 @@ describe("ReviewsService", () => {
       "product-1",
       "review-1",
     );
+    expect(cache.deleteByPattern).toHaveBeenCalled();
   });
 
   it("returns paginated reviews for a product", async () => {
+    vi.mocked(cache.getJson).mockResolvedValue(null);
     vi.mocked(prisma.product.findUnique).mockResolvedValue({
       id: "product-1",
     } as never);
@@ -85,6 +101,24 @@ describe("ReviewsService", () => {
 
     expect(result).toMatchObject({ page: 1, limit: 20, total: 1 });
     expect(result.items).toHaveLength(1);
+    expect(cache.setJson).toHaveBeenCalled();
+  });
+
+  it("returns cached paginated reviews when present", async () => {
+    vi.mocked(prisma.product.findUnique).mockResolvedValue({
+      id: "product-1",
+    } as never);
+    vi.mocked(cache.getJson).mockResolvedValue({
+      items: [],
+      page: 1,
+      limit: 20,
+      total: 0,
+    });
+
+    const result = await service.findAll("product-1", { page: 1, limit: 20 });
+
+    expect(result.total).toBe(0);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("updates an existing review", async () => {
@@ -104,6 +138,7 @@ describe("ReviewsService", () => {
       "product-1",
       "review-1",
     );
+    expect(cache.deleteByPattern).toHaveBeenCalled();
   });
 
   it("deletes an existing review", async () => {
@@ -121,6 +156,7 @@ describe("ReviewsService", () => {
       "product-1",
       "review-1",
     );
+    expect(cache.deleteByPattern).toHaveBeenCalled();
   });
 
   it("throws when creating review for missing product", async () => {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotFoundException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 
+import type { CacheService } from "../cache/cache.service";
 import type { PrismaService } from "../database/prisma.service";
 import { ProductsService } from "./products.service";
 
@@ -31,11 +32,24 @@ describe("ProductsService", () => {
     $transaction: vi.fn(),
   } as unknown as PrismaService;
 
+  const cache = {
+    getJson: vi.fn(),
+    setJson: vi.fn(),
+    delete: vi.fn(),
+    deleteByPattern: vi.fn(),
+    productDetailKey: vi.fn(
+      (productId: string) => `product:${productId}:detail`,
+    ),
+    productReviewsPattern: vi.fn(
+      (productId: string) => `product:${productId}:reviews:*`,
+    ),
+  } as unknown as CacheService;
+
   let service: ProductsService;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    service = new ProductsService(prisma);
+    vi.resetAllMocks();
+    service = new ProductsService(prisma, cache);
   });
 
   it("creates a product", async () => {
@@ -54,6 +68,7 @@ describe("ProductsService", () => {
       averageRating: null,
       reviewCount: 0,
     });
+    expect(cache.setJson).toHaveBeenCalled();
   });
 
   it("returns paginated products", async () => {
@@ -74,6 +89,7 @@ describe("ProductsService", () => {
   });
 
   it("returns one product by id", async () => {
+    vi.mocked(cache.getJson).mockResolvedValue(null);
     vi.mocked(prisma.product.findUnique).mockResolvedValue(buildProduct());
 
     const result = await service.findOne("product-1");
@@ -81,7 +97,26 @@ describe("ProductsService", () => {
     expect(result.id).toBe("product-1");
   });
 
+  it("returns cached product detail when present", async () => {
+    vi.mocked(cache.getJson).mockResolvedValue({
+      id: "product-1",
+      name: "Keyboard",
+      description: "Mechanical keyboard",
+      price: "129.99",
+      averageRating: null,
+      reviewCount: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const result = await service.findOne("product-1");
+
+    expect(result.id).toBe("product-1");
+    expect(prisma.product.findUnique).not.toHaveBeenCalled();
+  });
+
   it("throws when product does not exist", async () => {
+    vi.mocked(cache.getJson).mockResolvedValue(null);
     vi.mocked(prisma.product.findUnique).mockResolvedValue(null);
 
     await expect(service.findOne("missing-product")).rejects.toBeInstanceOf(
@@ -116,5 +151,7 @@ describe("ProductsService", () => {
     expect(prisma.product.delete).toHaveBeenCalledWith({
       where: { id: "product-1" },
     });
+    expect(cache.delete).toHaveBeenCalled();
+    expect(cache.deleteByPattern).toHaveBeenCalled();
   });
 });
