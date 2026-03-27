@@ -59,6 +59,17 @@ The PDF requires caching for review lists and average ratings. Because the syste
 
 Using `productId` as the message key preserves ordering for one product while still allowing different products to be processed concurrently across partitions.
 
+### Why `kafkajs` over NestJS Kafka transport
+
+NestJS already supports Kafka integration, but for this assignment I prefer `kafkajs` directly for the broker-facing layer.
+
+- it keeps producer and consumer behavior explicit
+- it gives direct control over topic names, message keys, retries, and offsets
+- it makes the event flow easier to reason about during code review
+- it avoids hiding broker behavior behind extra framework abstraction
+
+NestJS is still used for application structure, DI, validation, and module boundaries. `kafkajs` is only the lower-level broker client.
+
 ### Consistency model
 
 `averageRating` is eventually consistent. Review writes are committed by the product service first, then the processor recomputes and persists the derived rating. This keeps the write path clean and makes the distributed tradeoff explicit.
@@ -81,6 +92,7 @@ Observability is treated as a core quality attribute, not end-stage polish. The 
 - I prefer one PostgreSQL instance with clear table ownership for assignment delivery speed, rather than introducing separate databases too early
 - I prefer full rating recomputation per affected product over fragile incremental math because correctness and explainability matter more here than micro-optimization
 - I prefer Redpanda for local setup simplicity, while keeping the message contract Kafka-compatible
+- I am not introducing an outbox pattern in the first messaging slice; review writes will commit first and then publish events, which is simpler but not fully failure-proof if the broker is unavailable at publish time
 
 ## Workspace layout
 
@@ -96,13 +108,65 @@ infra/
 
 ## Current implementation focus
 
-1. Finish workspace bootstrap and dependency installation
-2. Add Prisma schemas and migrations
-3. Implement product and review APIs
-4. Publish review lifecycle events
-5. Implement processor concurrency, idempotency, and projection persistence
-6. Add cache behavior and observability to the real flows
-7. Add integration and end-to-end tests
+Completed so far:
+
+1. Workspace bootstrap and core infrastructure scaffold
+2. Prisma schema and initial database integration
+3. Product CRUD endpoints with paginated product listing
+4. Review CRUD and paginated review listing in `product-service`
+5. Review lifecycle event publication from `product-service` to `review-events`
+
+Next:
+
+1. Implement `review-processor-service` consumer and rating projection persistence
+2. Add Redis caching for review lists and product ratings
+3. Add observability to real HTTP and event-processing flows
+4. Expand integration and end-to-end tests
+
+## Current API surface
+
+Implemented in `product-service`:
+
+- `POST /products`
+- `GET /products?page=1&limit=20`
+- `GET /products/:productId`
+- `PATCH /products/:productId`
+- `DELETE /products/:productId`
+- `POST /products/:productId/reviews`
+- `GET /products/:productId/reviews?page=1&limit=20`
+- `PATCH /products/:productId/reviews/:reviewId`
+- `DELETE /products/:productId/reviews/:reviewId`
+
+Current API behavior:
+
+- product responses do not embed reviews
+- product list and review list are paginated
+- review `rating` is validated as an integer in the range `1..5`
+- `averageRating` is exposed as derived state and may be `null` until the processor is implemented
+
+## Event publication approach
+
+The next implemented step is broker publication from `product-service` when reviews change.
+
+- topic: `review-events`
+- key: `productId`
+- event types: `review.created`, `review.updated`, `review.deleted`
+- payload: `eventId`, `eventType`, `occurredAt`, `productId`, `reviewId`
+
+The event payload intentionally stays small. The review processor can recompute the rating from canonical database state, so it only needs to know which product and review changed.
+
+For local development, host-based services should connect to Redpanda through `localhost:19092`, which matches the external listener exposed by `docker-compose.yml`.
+
+## Data model
+
+The current PostgreSQL schema contains four main tables:
+
+- `products`: canonical product data
+- `reviews`: canonical review data owned by `product-service`
+- `product_ratings`: persisted derived rating projection per product
+- `processed_events`: idempotency table for the future review processor consumer
+
+This separation is intentional: canonical writes stay simple, and asynchronous derived state is modeled explicitly instead of being hidden inside the product row.
 
 ## Local infrastructure
 
@@ -117,3 +181,5 @@ Observability configuration files are scaffolded in `infra/docker/` and will be 
 ## Delivery notes
 
 The final repository should be easy to run, easy to review, and explicit about design choices. This `README.md` is intended to hold the implementation rationale and tradeoffs required by the assignment, so reviewer-facing documentation stays close to the code.
+
+As implementation progresses, this file should be updated alongside the code so the documented architecture, tradeoffs, and known limitations stay consistent with the actual repository state.

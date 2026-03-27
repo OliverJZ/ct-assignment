@@ -2,6 +2,7 @@ import { NotFoundException } from "@nestjs/common";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PrismaService } from "../database/prisma.service";
+import type { ReviewEventsPublisher } from "../events/review-events.publisher";
 import { ReviewsService } from "./reviews.service";
 
 function buildReview(overrides: Partial<Record<string, unknown>> = {}) {
@@ -34,11 +35,17 @@ describe("ReviewsService", () => {
     $transaction: vi.fn(),
   } as unknown as PrismaService;
 
+  const reviewEventsPublisher = {
+    publishCreated: vi.fn(),
+    publishUpdated: vi.fn(),
+    publishDeleted: vi.fn(),
+  } as unknown as ReviewEventsPublisher;
+
   let service: ReviewsService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new ReviewsService(prisma);
+    service = new ReviewsService(prisma, reviewEventsPublisher);
   });
 
   it("creates a review for an existing product", async () => {
@@ -59,6 +66,10 @@ describe("ReviewsService", () => {
       productId: "product-1",
       rating: 5,
     });
+    expect(reviewEventsPublisher.publishCreated).toHaveBeenCalledWith(
+      "product-1",
+      "review-1",
+    );
   });
 
   it("returns paginated reviews for a product", async () => {
@@ -89,6 +100,10 @@ describe("ReviewsService", () => {
     });
 
     expect(result.reviewText).toBe("Updated review");
+    expect(reviewEventsPublisher.publishUpdated).toHaveBeenCalledWith(
+      "product-1",
+      "review-1",
+    );
   });
 
   it("deletes an existing review", async () => {
@@ -102,6 +117,10 @@ describe("ReviewsService", () => {
     expect(prisma.review.delete).toHaveBeenCalledWith({
       where: { id: "review-1" },
     });
+    expect(reviewEventsPublisher.publishDeleted).toHaveBeenCalledWith(
+      "product-1",
+      "review-1",
+    );
   });
 
   it("throws when creating review for missing product", async () => {

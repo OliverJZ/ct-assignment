@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
 import type { PrismaService } from "../database/prisma.service";
+import type { ReviewEventsPublisher } from "../events/review-events.publisher";
 import type { CreateReviewDto } from "./dto/create-review.dto";
 import type { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
 import type { PaginatedReviewsResponseDto } from "./dto/paginated-reviews-response.dto";
@@ -9,7 +10,10 @@ import type { UpdateReviewDto } from "./dto/update-review.dto";
 
 @Injectable()
 export class ReviewsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reviewEventsPublisher: ReviewEventsPublisher,
+  ) {}
 
   async create(
     productId: string,
@@ -26,6 +30,8 @@ export class ReviewsService {
         rating: createReviewDto.rating,
       },
     });
+
+    await this.reviewEventsPublisher.publishCreated(productId, review.id);
 
     return ReviewResponseDto.fromReview(review);
   }
@@ -62,7 +68,7 @@ export class ReviewsService {
     reviewId: string,
     updateReviewDto: UpdateReviewDto,
   ): Promise<ReviewResponseDto> {
-    await this.ensureReviewExists(productId, reviewId);
+    const existingReview = await this.ensureReviewExists(productId, reviewId);
 
     const review = await this.prisma.review.update({
       where: { id: reviewId },
@@ -82,12 +88,18 @@ export class ReviewsService {
       },
     });
 
+    await this.reviewEventsPublisher.publishUpdated(
+      productId,
+      existingReview.id,
+    );
+
     return ReviewResponseDto.fromReview(review);
   }
 
   async remove(productId: string, reviewId: string): Promise<void> {
-    await this.ensureReviewExists(productId, reviewId);
+    const review = await this.ensureReviewExists(productId, reviewId);
     await this.prisma.review.delete({ where: { id: reviewId } });
+    await this.reviewEventsPublisher.publishDeleted(productId, review.id);
   }
 
   private async ensureProductExists(productId: string): Promise<void> {
@@ -104,7 +116,7 @@ export class ReviewsService {
   private async ensureReviewExists(
     productId: string,
     reviewId: string,
-  ): Promise<void> {
+  ): Promise<{ id: string }> {
     const review = await this.prisma.review.findFirst({
       where: { id: reviewId, productId },
       select: { id: true },
@@ -115,5 +127,7 @@ export class ReviewsService {
         `Review ${reviewId} for product ${productId} not found`,
       );
     }
+
+    return review;
   }
 }
