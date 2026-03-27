@@ -7,16 +7,21 @@
     "start": "node dist/main.js",
     "start:dev": "tsx watch src/main.ts",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "node -e \"console.log('No tests yet for product-service')\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.11",
     "@nestjs/core": "^11.0.11",
+    "@nestjs/platform-express": "^11.0.11",
+    "@prisma/client": "^6.16.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
-    "tsx": "^4.19.3"
+    "tsx": "^4.19.3",
+    "vitest": "^3.2.4"
   }
 }
