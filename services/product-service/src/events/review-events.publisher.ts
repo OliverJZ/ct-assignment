@@ -1,8 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type { OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 
 import { Kafka, logLevel } from "kafkajs";
+
+import { AppLoggerService } from "../observability/logger.service";
 
 const REVIEW_EVENTS_TOPIC = process.env.REVIEW_EVENTS_TOPIC ?? "review-events";
 const REDPANDA_BROKERS = (process.env.REDPANDA_BROKERS ?? "localhost:19092")
@@ -29,6 +31,11 @@ export class ReviewEventsPublisher implements OnModuleInit, OnModuleDestroy {
   });
 
   private readonly producer = this.kafka.producer();
+
+  constructor(
+    @Inject(AppLoggerService)
+    private readonly logger: AppLoggerService,
+  ) {}
 
   async onModuleInit() {
     await this.producer.connect();
@@ -71,6 +78,14 @@ export class ReviewEventsPublisher implements OnModuleInit, OnModuleDestroy {
           value: JSON.stringify(event),
         },
       ],
+    });
+
+    this.logger.info("Published review lifecycle event", {
+      eventId: event.eventId,
+      eventType: event.eventType,
+      productId: event.productId,
+      reviewId: event.reviewId,
+      topic: REVIEW_EVENTS_TOPIC,
     });
   }
 }

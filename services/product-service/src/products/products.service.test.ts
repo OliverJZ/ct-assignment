@@ -4,6 +4,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 import type { CacheService } from "../cache/cache.service";
 import type { PrismaService } from "../database/prisma.service";
+import type { MetricsService } from "../observability/metrics.service";
 import { ProductsService } from "./products.service";
 
 function buildProduct(overrides: Partial<Record<string, unknown>> = {}) {
@@ -45,11 +46,15 @@ describe("ProductsService", () => {
     ),
   } as unknown as CacheService;
 
+  const metrics = {
+    recordCacheOperation: vi.fn(),
+  } as unknown as MetricsService;
+
   let service: ProductsService;
 
   beforeEach(() => {
     vi.resetAllMocks();
-    service = new ProductsService(prisma, cache);
+    service = new ProductsService(prisma, cache, metrics);
   });
 
   it("creates a product", async () => {

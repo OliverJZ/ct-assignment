@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CacheService } from "../cache/cache.service";
 import type { PrismaService } from "../database/prisma.service";
 import type { ReviewEventsPublisher } from "../events/review-events.publisher";
+import type { MetricsService } from "../observability/metrics.service";
 import { ReviewsService } from "./reviews.service";
 
 function buildReview(overrides: Partial<Record<string, unknown>> = {}) {
@@ -55,11 +56,15 @@ describe("ReviewsService", () => {
     ),
   } as unknown as CacheService;
 
+  const metrics = {
+    recordCacheOperation: vi.fn(),
+  } as unknown as MetricsService;
+
   let service: ReviewsService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new ReviewsService(prisma, cache, reviewEventsPublisher);
+    service = new ReviewsService(prisma, cache, metrics, reviewEventsPublisher);
   });
 
   it("creates a review for an existing product", async () => {

@@ -3,6 +3,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 import { CacheService } from "../cache/cache.service";
 import { PrismaService } from "../database/prisma.service";
+import { MetricsService } from "../observability/metrics.service";
 import type { CreateProductDto } from "./dto/create-product.dto";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto";
 import type { PaginatedProductsResponseDto } from "./dto/paginated-products-response.dto";
@@ -14,6 +15,7 @@ export class ProductsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(CacheService) private readonly cache: CacheService,
+    @Inject(MetricsService) private readonly metrics: MetricsService,
   ) {}
 
   async create(
@@ -30,6 +32,7 @@ export class ProductsService {
 
     const response = ProductResponseDto.fromProduct(product);
     await this.cache.setJson(this.cache.productDetailKey(product.id), response);
+    this.metrics.recordCacheOperation("product_detail", "write");
     return response;
   }
 
@@ -63,8 +66,11 @@ export class ProductsService {
       await this.cache.getJson<ProductResponseDto>(cacheKey);
 
     if (cachedProduct) {
+      this.metrics.recordCacheOperation("product_detail", "hit");
       return cachedProduct;
     }
+
+    this.metrics.recordCacheOperation("product_detail", "miss");
 
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
@@ -77,6 +83,7 @@ export class ProductsService {
 
     const response = ProductResponseDto.fromProduct(product);
     await this.cache.setJson(cacheKey, response);
+    this.metrics.recordCacheOperation("product_detail", "write");
     return response;
   }
 
@@ -104,6 +111,7 @@ export class ProductsService {
 
     const response = ProductResponseDto.fromProduct(product);
     await this.cache.setJson(this.cache.productDetailKey(productId), response);
+    this.metrics.recordCacheOperation("product_detail", "write");
     return response;
   }
 
@@ -111,9 +119,11 @@ export class ProductsService {
     await this.ensureProductExists(productId);
     await this.prisma.product.delete({ where: { id: productId } });
     await this.cache.delete(this.cache.productDetailKey(productId));
+    this.metrics.recordCacheOperation("product_detail", "delete");
     await this.cache.deleteByPattern(
       this.cache.productReviewsPattern(productId),
     );
+    this.metrics.recordCacheOperation("product_reviews", "delete");
   }
 
   private async ensureProductExists(productId: string): Promise<void> {

@@ -4,13 +4,12 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 
 import { AppModule } from "./app.module";
+import { AppLoggerService } from "./observability/logger.service";
+import { RequestLoggingInterceptor } from "./observability/request-logging.interceptor";
 
 async function bootstrap() {
-  console.log("Creating Nest application...");
-
   const app = await NestFactory.create(AppModule);
-
-  console.log("Applying global validation pipe...");
+  app.useLogger(app.get(AppLoggerService));
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -20,14 +19,9 @@ async function bootstrap() {
     }),
   );
 
-  console.log("Starting product service...");
+  app.useGlobalInterceptors(app.get(RequestLoggingInterceptor));
 
-  await app.listen(process.env.PRODUCT_SERVICE_PORT ?? 3000);
-
-  console.log(
-    "Product service is running on port",
-    process.env.PRODUCT_SERVICE_PORT ?? 3000,
-  );
+  await app.listen(process.env.PRODUCT_SERVICE_PORT ?? 3000, "0.0.0.0");
 }
 
 bootstrap();

@@ -3,6 +3,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 import { CacheService } from "../cache/cache.service";
 import { PrismaService } from "../database/prisma.service";
+import { MetricsService } from "../observability/metrics.service";
 
 type ProcessReviewEventInput = {
   eventId: string;
@@ -23,6 +24,7 @@ export class RatingProjectionService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(CacheService) private readonly cache: CacheService,
+    @Inject(MetricsService) private readonly metrics: MetricsService,
   ) {}
 
   async processReviewEvent(
@@ -96,6 +98,7 @@ export class RatingProjectionService {
     }
 
     await this.cache.delete(this.cache.productDetailKey(input.productId));
+    this.metrics.recordCacheInvalidation("product_detail");
 
     return { status: "processed" };
   }

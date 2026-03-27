@@ -117,10 +117,11 @@ Completed so far:
 5. Review lifecycle event publication from `product-service` to `review-events`
 6. `review-processor-service` consumer and rating projection persistence
 7. Redis caching for product detail responses and review-list responses
+8. Structured JSON logging and Prometheus-style metrics endpoints for both services
 
 Next:
 
-1. Add observability to real HTTP and event-processing flows
+1. Add distributed tracing across HTTP, broker, database, and cache boundaries
 2. Expand integration and end-to-end tests
 
 ## Current API surface
@@ -182,6 +183,43 @@ The assignment requires cached product reviews and cached average ratings. The c
 - the review processor invalidates the cached product detail after recomputing `averageRating`
 
 This means review-list cache invalidation is immediate on canonical writes, while product-detail cache invalidation follows the eventual-consistency boundary of the asynchronous rating projection.
+
+## Observability strategy
+
+The current observability slice focuses on structured logging and metrics first.
+
+- both services emit structured JSON logs through `pino`
+- `product-service` logs HTTP requests with request IDs, route, status code, and duration
+- `product-service` exposes `GET /metrics`
+- `review-processor-service` logs event receipt and processing outcomes with event metadata
+- `review-processor-service` exposes `GET /metrics`
+- both services export Prometheus-style metrics through `prom-client`
+- `docker-compose.yml` includes an `observability` profile for Prometheus and Grafana
+
+Current metrics coverage includes:
+
+- product-service HTTP request count and latency
+- product-service cache operation counts
+- review-processor event counts and processing duration
+- review-processor cache invalidation counts
+
+Tracing is the next observability step, after the logging and metrics baseline is stable.
+
+To start the current metrics stack locally:
+
+```bash
+docker compose --profile observability up -d prometheus grafana
+```
+
+Then open:
+
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3002` (`admin` / `admin`)
+
+The services expose metrics at:
+
+- `http://localhost:3000/metrics`
+- `http://localhost:3001/metrics`
 
 ## Data model
 

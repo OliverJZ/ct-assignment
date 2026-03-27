@@ -3,6 +3,7 @@ import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { CacheService } from "../cache/cache.service";
 import { PrismaService } from "../database/prisma.service";
 import { ReviewEventsPublisher } from "../events/review-events.publisher";
+import { MetricsService } from "../observability/metrics.service";
 import type { CreateReviewDto } from "./dto/create-review.dto";
 import type { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
 import type { PaginatedReviewsResponseDto } from "./dto/paginated-reviews-response.dto";
@@ -14,6 +15,7 @@ export class ReviewsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(CacheService) private readonly cache: CacheService,
+    @Inject(MetricsService) private readonly metrics: MetricsService,
     @Inject(ReviewEventsPublisher)
     private readonly reviewEventsPublisher: ReviewEventsPublisher,
   ) {}
@@ -37,6 +39,7 @@ export class ReviewsService {
     await this.cache.deleteByPattern(
       this.cache.productReviewsPattern(productId),
     );
+    this.metrics.recordCacheOperation("product_reviews", "delete");
 
     await this.reviewEventsPublisher.publishCreated(productId, review.id);
 
@@ -55,8 +58,11 @@ export class ReviewsService {
       await this.cache.getJson<PaginatedReviewsResponseDto>(cacheKey);
 
     if (cachedReviews) {
+      this.metrics.recordCacheOperation("product_reviews", "hit");
       return cachedReviews;
     }
+
+    this.metrics.recordCacheOperation("product_reviews", "miss");
 
     const skip = (page - 1) * limit;
 
@@ -78,6 +84,7 @@ export class ReviewsService {
     };
 
     await this.cache.setJson(cacheKey, response);
+    this.metrics.recordCacheOperation("product_reviews", "write");
 
     return response;
   }
@@ -110,6 +117,7 @@ export class ReviewsService {
     await this.cache.deleteByPattern(
       this.cache.productReviewsPattern(productId),
     );
+    this.metrics.recordCacheOperation("product_reviews", "delete");
 
     await this.reviewEventsPublisher.publishUpdated(
       productId,
@@ -125,6 +133,7 @@ export class ReviewsService {
     await this.cache.deleteByPattern(
       this.cache.productReviewsPattern(productId),
     );
+    this.metrics.recordCacheOperation("product_reviews", "delete");
     await this.reviewEventsPublisher.publishDeleted(productId, review.id);
   }
 

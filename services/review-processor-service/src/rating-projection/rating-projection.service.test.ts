@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CacheService } from "../cache/cache.service";
 import type { PrismaService } from "../database/prisma.service";
+import type { MetricsService } from "../observability/metrics.service";
 import { RatingProjectionService } from "./rating-projection.service";
 
 describe("RatingProjectionService", () => {
@@ -25,11 +26,15 @@ describe("RatingProjectionService", () => {
     ),
   } as unknown as CacheService;
 
+  const metrics = {
+    recordCacheInvalidation: vi.fn(),
+  } as unknown as MetricsService;
+
   let service: RatingProjectionService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new RatingProjectionService(prisma, cache);
+    service = new RatingProjectionService(prisma, cache, metrics);
   });
 
   it("skips an already processed event", async () => {
