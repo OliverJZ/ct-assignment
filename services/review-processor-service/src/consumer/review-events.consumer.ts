@@ -1,4 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
+import {
+  context,
+  propagation,
+  SpanStatusCode,
+  trace,
+} from "@opentelemetry/api";
 import type { OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Kafka, logLevel } from "kafkajs";
 
@@ -23,6 +29,7 @@ const REDPANDA_BROKERS = (process.env.REDPANDA_BROKERS ?? "localhost:19092")
   .split(",")
   .map((broker) => broker.trim())
   .filter(Boolean);
+const tracer = trace.getTracer("review-processor-consumer");
 
 @Injectable()
 export class ReviewEventsConsumer implements OnModuleInit, OnModuleDestroy {
@@ -66,57 +73,106 @@ export class ReviewEventsConsumer implements OnModuleInit, OnModuleDestroy {
 
         const event = JSON.parse(message.value.toString()) as ReviewEvent;
         const startedAt = performance.now();
+        const carrier = Object.fromEntries(
+          Object.entries(message.headers ?? {}).map(([key, value]) => [
+            key,
+            Buffer.isBuffer(value)
+              ? value.toString()
+              : typeof value === "string"
+                ? value
+                : undefined,
+          ]),
+        );
+        const extractedContext = propagation.extract(
+          context.active(),
+          carrier,
+          {
+            get: (headerCarrier, key) => headerCarrier[key],
+            keys: (headerCarrier) => Object.keys(headerCarrier),
+          },
+        );
 
-        this.logger.info("Received review lifecycle event", {
-          eventId: event.eventId,
-          eventType: event.eventType,
-          productId: event.productId,
-          reviewId: event.reviewId,
-          partition,
-          offset: message.offset,
-          topic,
-        });
-
-        try {
-          const result = await this.ratingProjectionService.processReviewEvent({
-            ...event,
-            partition,
-            offset: message.offset,
-          });
-
-          const durationMs = performance.now() - startedAt;
-          this.metrics.recordReviewEvent(
-            event.eventType,
-            result.status,
-            durationMs,
-          );
-
-          this.logger.info("Processed review lifecycle event", {
-            eventId: event.eventId,
-            eventType: event.eventType,
-            productId: event.productId,
-            reviewId: event.reviewId,
-            status: result.status,
-            durationMs: Number(durationMs.toFixed(2)),
-          });
-        } catch (error) {
-          const durationMs = performance.now() - startedAt;
-          this.metrics.recordReviewEvent(event.eventType, "failed", durationMs);
-
-          this.logger.errorWithFields(
-            "Failed to process review lifecycle event",
-            {
+        await tracer.startActiveSpan(
+          "review-events.consume",
+          {
+            attributes: {
+              "messaging.system": "kafka",
+              "messaging.destination.name": topic,
+              "messaging.operation": "process",
+              "messaging.kafka.partition": partition,
+              "messaging.kafka.offset": message.offset,
+              "review.event_type": event.eventType,
+              "review.product_id": event.productId,
+              "review.review_id": event.reviewId,
+            },
+          },
+          extractedContext,
+          async (span) => {
+            this.logger.info("Received review lifecycle event", {
               eventId: event.eventId,
               eventType: event.eventType,
               productId: event.productId,
               reviewId: event.reviewId,
-              durationMs: Number(durationMs.toFixed(2)),
-              error: error instanceof Error ? error.message : String(error),
-            },
-          );
+              partition,
+              offset: message.offset,
+              topic,
+            });
 
-          throw error;
-        }
+            try {
+              const result =
+                await this.ratingProjectionService.processReviewEvent({
+                  ...event,
+                  partition,
+                  offset: message.offset,
+                });
+
+              const durationMs = performance.now() - startedAt;
+              this.metrics.recordReviewEvent(
+                event.eventType,
+                result.status,
+                durationMs,
+              );
+
+              this.logger.info("Processed review lifecycle event", {
+                eventId: event.eventId,
+                eventType: event.eventType,
+                productId: event.productId,
+                reviewId: event.reviewId,
+                status: result.status,
+                durationMs: Number(durationMs.toFixed(2)),
+              });
+            } catch (error) {
+              const durationMs = performance.now() - startedAt;
+              this.metrics.recordReviewEvent(
+                event.eventType,
+                "failed",
+                durationMs,
+              );
+
+              this.logger.errorWithFields(
+                "Failed to process review lifecycle event",
+                {
+                  eventId: event.eventId,
+                  eventType: event.eventType,
+                  productId: event.productId,
+                  reviewId: event.reviewId,
+                  durationMs: Number(durationMs.toFixed(2)),
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              );
+
+              span.recordException(error as Error);
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: error instanceof Error ? error.message : String(error),
+              });
+
+              throw error;
+            } finally {
+              span.end();
+            }
+          },
+        );
       },
     });
   }

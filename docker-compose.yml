@@ -64,6 +64,27 @@ services:
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
 
+  tempo:
+    profiles: ["observability"]
+    image: grafana/tempo:2.7.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infra/docker/tempo/config.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "${TEMPO_PORT:-3200}:3200"
+
+  otel-collector:
+    profiles: ["observability"]
+    image: otel/opentelemetry-collector-contrib:0.121.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./infra/docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - tempo
+
   grafana:
     profiles: ["observability"]
     image: grafana/grafana:11.5.2
@@ -76,6 +97,7 @@ services:
       - "${GRAFANA_PORT:-3002}:3000"
     depends_on:
       - prometheus
+      - tempo
 
 volumes:
   postgres_data:

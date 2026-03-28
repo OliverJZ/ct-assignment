@@ -25,6 +25,12 @@
     "prisma:migrate:deploy": "prisma migrate deploy --schema packages/shared/prisma/schema.prisma",
     "prisma:studio": "prisma studio --schema packages/shared/prisma/schema.prisma",
     "prisma:validate": "prisma validate --schema packages/shared/prisma/schema.prisma",
+    "demo:traffic": "node infra/scripts/demo-traffic.mjs",
+    "compose:infra": "docker compose up -d postgres redis redpanda",
+    "compose:observability": "docker compose --profile observability up -d prometheus tempo otel-collector grafana",
+    "topic:describe": "docker compose exec redpanda rpk topic describe review-events",
+    "topic:ensure": "bash infra/scripts/ensure-review-events-topic.sh",
+    "group:describe": "docker compose exec redpanda rpk group describe review-processor",
     "compose:up": "docker compose up -d",
     "compose:down": "docker compose down -v"
   },

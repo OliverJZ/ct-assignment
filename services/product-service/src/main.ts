@@ -6,8 +6,11 @@ import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 import { AppLoggerService } from "./observability/logger.service";
 import { RequestLoggingInterceptor } from "./observability/request-logging.interceptor";
+import { initializeTracing } from "./observability/tracing";
 
 async function bootstrap() {
+  await initializeTracing();
+
   const app = await NestFactory.create(AppModule);
   app.useLogger(app.get(AppLoggerService));
 

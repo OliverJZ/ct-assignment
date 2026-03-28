@@ -121,8 +121,8 @@ Completed so far:
 
 Next:
 
-1. Add distributed tracing across HTTP, broker, database, and cache boundaries
-2. Expand integration and end-to-end tests
+1. Expand integration and end-to-end tests
+2. Finalize README runbook and submission polish
 
 ## Current API surface
 
@@ -195,6 +195,8 @@ The current observability slice focuses on structured logging and metrics first.
 - `review-processor-service` exposes `GET /metrics`
 - both services export Prometheus-style metrics through `prom-client`
 - `docker-compose.yml` includes an `observability` profile for Prometheus and Grafana
+- both services export distributed traces through OpenTelemetry to the collector
+- trace context is propagated through Kafka message headers between the two services
 
 Current metrics coverage includes:
 
@@ -203,23 +205,54 @@ Current metrics coverage includes:
 - review-processor event counts and processing duration
 - review-processor cache invalidation counts
 
-Tracing is the next observability step, after the logging and metrics baseline is stable.
+The observability rollout is layered: logs and metrics first, then distributed tracing.
+
+Tracing is now enabled with OpenTelemetry. The current tracing flow covers:
+
+- incoming HTTP requests into `product-service`
+- Kafka publish spans for review lifecycle events
+- Kafka consumer spans in `review-processor-service`
+- trace context propagation across Kafka headers
+- downstream auto-instrumented Node spans where available
 
 To start the current metrics stack locally:
 
 ```bash
-docker compose --profile observability up -d prometheus grafana
+docker compose --profile observability up -d prometheus tempo otel-collector grafana
 ```
 
 Then open:
 
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3002` (`admin` / `admin`)
+- Tempo: `http://localhost:3200`
 
 The services expose metrics at:
 
 - `http://localhost:3000/metrics`
 - `http://localhost:3001/metrics`
+
+Tracing is exported to the collector through `OTEL_EXPORTER_OTLP_ENDPOINT`, which defaults to `http://localhost:4318` in local development.
+
+To generate demo traffic for logs, metrics, cache activity, and traces:
+
+```bash
+npm run demo:traffic
+```
+
+The script creates a product, creates reviews, updates one review, deletes both reviews, and fetches product/review endpoints between mutations so the observability stack has useful activity to display.
+
+For demonstrating 2+ processor instances and concurrent work across products, the demo traffic script now creates multiple products so the event stream contains multiple distinct `productId` keys.
+
+## Processor scaling note
+
+The review processor scales horizontally through a shared Kafka consumer group, but actual parallelism depends on topic partition count.
+
+- `review-events` should have more than one partition to demonstrate multiple active processor instances
+- messages are keyed by `productId`, which preserves ordering for one product while allowing different products to be processed in parallel
+- heavier traffic alone does not create parallelism if the topic only has a single partition
+
+For local verification with Redpanda, increase the partition count for `review-events` before running multiple processor instances.
 
 ## Data model
 
@@ -240,7 +273,28 @@ This separation is intentional: canonical writes stay simple, and asynchronous d
 - `redis`
 - `redpanda`
 
-Observability configuration files are scaffolded in `infra/docker/` and will be enabled after the core application flow is working.
+The easiest local workflow is:
+
+```bash
+npm run compose:infra
+npm run compose:observability
+npm run topic:ensure
+npm run dev:product
+npm run dev:processor
+```
+
+For a second processor instance:
+
+```bash
+INSTANCE_ID=processor-b REVIEW_PROCESSOR_PORT=3003 npm run dev:processor
+```
+
+Useful broker inspection commands:
+
+```bash
+npm run topic:describe
+npm run group:describe
+```
 
 ## Delivery notes
 
