@@ -31,6 +31,7 @@
     "topic:describe": "docker compose exec redpanda rpk topic describe review-events",
     "topic:ensure": "bash infra/scripts/ensure-review-events-topic.sh",
     "group:describe": "docker compose exec redpanda rpk group describe review-processor",
+    "compose:full": "docker compose --profile observability up --build -d",
     "compose:up": "docker compose up -d",
     "compose:down": "docker compose down -v"
   },

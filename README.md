@@ -106,23 +106,20 @@ infra/
   docker/
 ```
 
-## Current implementation focus
+## Assignment Checklist
 
-Completed so far:
-
-1. Workspace bootstrap and core infrastructure scaffold
-2. Prisma schema and initial database integration
-3. Product CRUD endpoints with paginated product listing
-4. Review CRUD and paginated review listing in `product-service`
-5. Review lifecycle event publication from `product-service` to `review-events`
-6. `review-processor-service` consumer and rating projection persistence
-7. Redis caching for product detail responses and review-list responses
-8. Structured JSON logging and Prometheus-style metrics endpoints for both services
-
-Next:
-
-1. Expand integration and end-to-end tests
-2. Finalize README runbook and submission polish
+- Product CRUD API: implemented
+- Product payload does not return reviews: implemented
+- Review create, edit, delete API: implemented
+- Product review listing endpoint: implemented
+- Product service notifies review processor on review changes: implemented through `review-events`
+- Review processor consumes events and persists average rating: implemented
+- Review processor supports 2+ instances: implemented through Kafka consumer group membership
+- Concurrent event processing design: implemented through partitioned topic consumption keyed by `productId`
+- Product reviews and average ratings are cached: implemented with Redis
+- Docker Compose project setup: implemented
+- TypeScript and lint configuration: implemented
+- Documentation of thought process and tradeoffs: implemented in this `README.md`
 
 ## Current API surface
 
@@ -145,6 +142,65 @@ Current API behavior:
 - review `rating` is validated as an integer in the range `1..5`
 - `averageRating` is exposed as derived state and may be `null` until the processor is implemented
 - product detail reads and review-list reads are cached in Redis
+
+## How To Run
+
+Preferred full-stack startup:
+
+```bash
+npm run compose:full
+```
+
+This starts infrastructure, both services, a second review-processor instance, and the observability stack.
+
+Primary endpoints:
+
+- product API: `http://localhost:3000`
+- processor metrics: `http://localhost:3001/metrics`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3002`
+
+To stop everything:
+
+```bash
+npm run compose:down
+```
+
+Development mode is still available if needed by running infrastructure in Docker and services locally.
+
+## How To Verify
+
+Start the stack:
+
+```bash
+npm run compose:full
+```
+
+Generate realistic traffic:
+
+```bash
+npm run demo:traffic
+```
+
+Verify processor group membership and partition assignment:
+
+```bash
+npm run topic:describe
+npm run group:describe
+```
+
+Verify derived rating state:
+
+```bash
+docker compose exec postgres psql -U postgres -d ct_assignment -c "select product_id, average_rating, review_count from product_ratings order by product_id;"
+docker compose exec postgres psql -U postgres -d ct_assignment -c "select event_id, product_id, review_id, partition, offset from processed_events order by processed_at desc limit 20;"
+```
+
+Verify observability:
+
+- Prometheus queries such as `product_service_cache_operations_total` and `review_processor_events_total`
+- Grafana Explore with Tempo for traces
+- Grafana Explore with Loki for service logs
 
 ## Event publication approach
 
@@ -197,6 +253,7 @@ The current observability slice focuses on structured logging and metrics first.
 - `docker-compose.yml` includes an `observability` profile for Prometheus and Grafana
 - both services export distributed traces through OpenTelemetry to the collector
 - trace context is propagated through Kafka message headers between the two services
+- Docker logs are aggregated into Loki through Promtail for service-level log querying in Grafana
 
 Current metrics coverage includes:
 
@@ -218,7 +275,7 @@ Tracing is now enabled with OpenTelemetry. The current tracing flow covers:
 To start the current metrics stack locally:
 
 ```bash
-docker compose --profile observability up -d prometheus tempo otel-collector grafana
+docker compose --profile observability up -d prometheus tempo loki otel-collector promtail grafana
 ```
 
 Then open:
@@ -226,6 +283,7 @@ Then open:
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3002` (`admin` / `admin`)
 - Tempo: `http://localhost:3200`
+- Loki: `http://localhost:3100`
 
 The services expose metrics at:
 
@@ -241,6 +299,13 @@ npm run demo:traffic
 ```
 
 The script creates a product, creates reviews, updates one review, deletes both reviews, and fetches product/review endpoints between mutations so the observability stack has useful activity to display.
+
+For log inspection in Grafana:
+
+- open Explore
+- choose the `Loki` datasource
+- query by labels such as `service="product-service"` or `service=~"review-processor-service.*"`
+- use JSON fields like `traceId`, `instanceId`, `productId`, `reviewId`, and `eventId` to narrow results
 
 For demonstrating 2+ processor instances and concurrent work across products, the demo traffic script now creates multiple products so the event stream contains multiple distinct `productId` keys.
 
@@ -267,13 +332,29 @@ This separation is intentional: canonical writes stay simple, and asynchronous d
 
 ## Local infrastructure
 
-`docker-compose.yml` currently provisions:
+The full Docker startup includes:
 
 - `postgres`
 - `redis`
 - `redpanda`
+- `redpanda-init`
+- `product-service`
+- `review-processor-service`
+- `review-processor-service-2`
+- `prometheus`
+- `tempo`
+- `loki`
+- `otel-collector`
+- `promtail`
+- `grafana`
 
-The easiest local workflow is:
+If you want only the core runtime without observability, use:
+
+```bash
+npm run compose:up -- --build
+```
+
+If you want to run services locally instead of in Docker, the supporting workflow is:
 
 ```bash
 npm run compose:infra
@@ -295,6 +376,15 @@ Useful broker inspection commands:
 npm run topic:describe
 npm run group:describe
 ```
+
+Primary service endpoints in the full Docker setup:
+
+- product API: `http://localhost:3000`
+- processor metrics: `http://localhost:3001/metrics`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3002`
+- Loki: `http://localhost:3100`
+- Tempo: `http://localhost:3200`
 
 ## Delivery notes
 

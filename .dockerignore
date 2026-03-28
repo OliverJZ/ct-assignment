@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.git
+.env
+.vscode
+*.log
+tool-output
+services/*/dist
+services/*/node_modules
+packages/*/dist
+packages/*/node_modules

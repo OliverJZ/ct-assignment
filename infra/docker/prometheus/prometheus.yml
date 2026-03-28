@@ -5,10 +5,10 @@ scrape_configs:
   - job_name: product-service
     static_configs:
       - targets:
-          - host.docker.internal:3000
+          - product-service:3000
 
   - job_name: review-processor-service
     static_configs:
       - targets:
-          - host.docker.internal:3001
-          - host.docker.internal:3003
+          - review-processor-service:3001
+          - review-processor-service-2:3001

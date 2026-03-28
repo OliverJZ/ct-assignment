@@ -54,6 +54,93 @@ services:
       timeout: 10s
       retries: 10
 
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.5
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      'current_partitions=$$(rpk -X brokers=redpanda:9092 topic describe review-events 2>/dev/null | grep "^PARTITIONS" | tr -s " " | cut -d" " -f2);
+      if [ -z "$$current_partitions" ]; then
+        rpk -X brokers=redpanda:9092 topic create review-events --partitions 4 --replicas 1;
+      elif [ "$$current_partitions" -lt 4 ]; then
+        rpk -X brokers=redpanda:9092 topic add-partitions review-events --num $$((4 - $$current_partitions));
+      fi;
+      rpk -X brokers=redpanda:9092 topic describe review-events'
+
+  product-service:
+    build:
+      context: .
+      dockerfile: services/product-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PRODUCT_SERVICE_PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ct_assignment?schema=public
+      REDIS_URL: redis://redis:6379/0
+      REDPANDA_BROKERS: redpanda:9092
+      REVIEW_EVENTS_TOPIC: review-events
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      INSTANCE_ID: product-service
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+
+  review-processor-service:
+    build:
+      context: .
+      dockerfile: services/review-processor-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REVIEW_PROCESSOR_PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ct_assignment?schema=public
+      REDIS_URL: redis://redis:6379/0
+      REDPANDA_BROKERS: redpanda:9092
+      REVIEW_EVENTS_TOPIC: review-events
+      REVIEW_CONSUMER_GROUP: review-processor
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      INSTANCE_ID: processor-a
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+
+  review-processor-service-2:
+    build:
+      context: .
+      dockerfile: services/review-processor-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REVIEW_PROCESSOR_PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ct_assignment?schema=public
+      REDIS_URL: redis://redis:6379/0
+      REDPANDA_BROKERS: redpanda:9092
+      REVIEW_EVENTS_TOPIC: review-events
+      REVIEW_CONSUMER_GROUP: review-processor
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      INSTANCE_ID: processor-b
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+
   prometheus:
     profiles: ["observability"]
     image: prom/prometheus:v3.2.1
@@ -73,6 +160,15 @@ services:
     ports:
       - "${TEMPO_PORT:-3200}:3200"
 
+  loki:
+    profiles: ["observability"]
+    image: grafana/loki:3.4.1
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./infra/docker/loki/config.yaml:/etc/loki/config.yaml:ro
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+
   otel-collector:
     profiles: ["observability"]
     image: otel/opentelemetry-collector-contrib:0.121.0
@@ -84,6 +180,16 @@ services:
       - "4318:4318"
     depends_on:
       - tempo
+
+  promtail:
+    profiles: ["observability"]
+    image: grafana/promtail:3.4.1
+    command: ["-config.file=/etc/promtail/config.yaml"]
+    volumes:
+      - ./infra/docker/promtail/config.yaml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - loki
 
   grafana:
     profiles: ["observability"]
@@ -98,6 +204,7 @@ services:
     depends_on:
       - prometheus
       - tempo
+      - loki
 
 volumes:
   postgres_data:

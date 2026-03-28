@@ -2,7 +2,10 @@ import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { Resource } from "@opentelemetry/resources";
 import { NodeSDK } from "@opentelemetry/sdk-node";
-import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import {
+  ATTR_SERVICE_INSTANCE_ID,
+  ATTR_SERVICE_NAME,
+} from "@opentelemetry/semantic-conventions";
 
 let sdk: NodeSDK | null = null;
 
@@ -13,10 +16,13 @@ export async function initializeTracing(): Promise<void> {
 
   const endpoint =
     process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://localhost:4318";
+  const instanceId =
+    process.env.INSTANCE_ID ?? `review-processor-service-${process.pid}`;
 
   sdk = new NodeSDK({
     resource: new Resource({
       [ATTR_SERVICE_NAME]: "review-processor-service",
+      [ATTR_SERVICE_INSTANCE_ID]: instanceId,
     }),
     traceExporter: new OTLPTraceExporter({
       url: `${endpoint}/v1/traces`,
