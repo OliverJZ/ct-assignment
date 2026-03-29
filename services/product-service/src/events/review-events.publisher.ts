@@ -10,13 +10,8 @@ import { randomUUID } from "node:crypto";
 
 import { Kafka, logLevel } from "kafkajs";
 
+import { AppConfigService } from "../config/app-config";
 import { AppLoggerService } from "../observability/logger.service";
-
-const REVIEW_EVENTS_TOPIC = process.env.REVIEW_EVENTS_TOPIC ?? "review-events";
-const REDPANDA_BROKERS = (process.env.REDPANDA_BROKERS ?? "localhost:19092")
-  .split(",")
-  .map((broker) => broker.trim())
-  .filter(Boolean);
 const tracer = trace.getTracer("product-service-events");
 
 type ReviewEventType = "review.created" | "review.updated" | "review.deleted";
@@ -31,18 +26,25 @@ type ReviewEvent = {
 
 @Injectable()
 export class ReviewEventsPublisher implements OnModuleInit, OnModuleDestroy {
-  private readonly kafka = new Kafka({
-    clientId: "product-service",
-    brokers: REDPANDA_BROKERS,
-    logLevel: logLevel.NOTHING,
-  });
+  private readonly kafka: Kafka;
 
-  private readonly producer = this.kafka.producer();
+  private readonly producer;
+
+  private readonly reviewEventsTopic: string;
 
   constructor(
+    @Inject(AppConfigService) config: AppConfigService,
     @Inject(AppLoggerService)
     private readonly logger: AppLoggerService,
-  ) {}
+  ) {
+    this.kafka = new Kafka({
+      clientId: "product-service",
+      brokers: config.redpandaBrokers,
+      logLevel: logLevel.NOTHING,
+    });
+    this.producer = this.kafka.producer();
+    this.reviewEventsTopic = config.reviewEventsTopic;
+  }
 
   async onModuleInit() {
     await this.producer.connect();
@@ -82,7 +84,7 @@ export class ReviewEventsPublisher implements OnModuleInit, OnModuleDestroy {
       {
         attributes: {
           "messaging.system": "kafka",
-          "messaging.destination.name": REVIEW_EVENTS_TOPIC,
+          "messaging.destination.name": this.reviewEventsTopic,
           "messaging.operation": "publish",
           "review.event_type": eventType,
           "review.product_id": productId,
@@ -95,7 +97,7 @@ export class ReviewEventsPublisher implements OnModuleInit, OnModuleDestroy {
           propagation.inject(context.active(), headers);
 
           await this.producer.send({
-            topic: REVIEW_EVENTS_TOPIC,
+            topic: this.reviewEventsTopic,
             messages: [
               {
                 key: productId,
@@ -110,7 +112,7 @@ export class ReviewEventsPublisher implements OnModuleInit, OnModuleDestroy {
             eventType: event.eventType,
             productId: event.productId,
             reviewId: event.reviewId,
-            topic: REVIEW_EVENTS_TOPIC,
+            topic: this.reviewEventsTopic,
           });
         } catch (error) {
           span.recordException(error as Error);

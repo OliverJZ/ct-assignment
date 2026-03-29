@@ -61,11 +61,14 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command: >-
-      'current_partitions=$$(rpk -X brokers=redpanda:9092 topic describe review-events 2>/dev/null | grep "^PARTITIONS" | tr -s " " | cut -d" " -f2); if [ -z "$$current_partitions" ]; then
-        rpk -X brokers=redpanda:9092 topic create review-events --partitions 4 --replicas 1;
-      elif [ "$$current_partitions" -lt 4 ]; then
-        rpk -X brokers=redpanda:9092 topic add-partitions review-events --num $$((4 - $$current_partitions));
-      fi; rpk -X brokers=redpanda:9092 topic describe review-events'
+      'if ! rpk -X brokers=redpanda:9092 topic describe review-events >/tmp/review-events.txt 2>&1; then
+        rpk -X brokers=redpanda:9092 topic create review-events --partitions ${REVIEW_EVENTS_PARTITIONS:-4} --replicas 1;
+      fi;
+      current_partitions=$$(rpk -X brokers=redpanda:9092 topic describe review-events | grep "^PARTITIONS" | tr -s " " | cut -d" " -f2);
+      if [ "$${current_partitions:-0}" -lt ${REVIEW_EVENTS_PARTITIONS:-4} ]; then
+        rpk -X brokers=redpanda:9092 topic add-partitions review-events --num $$(( ${REVIEW_EVENTS_PARTITIONS:-4} - current_partitions ));
+      fi;
+      rpk -X brokers=redpanda:9092 topic describe review-events'
 
   product-service:
     build:

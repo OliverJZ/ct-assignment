@@ -1,23 +1,23 @@
-import { ConsoleLogger, Injectable } from "@nestjs/common";
+import { Inject, ConsoleLogger, Injectable } from "@nestjs/common";
 import { trace } from "@opentelemetry/api";
 import pino, { type Logger } from "pino";
+
+import { AppConfigService } from "../config/app-config";
 
 type LogContext = Record<string, unknown>;
 
 @Injectable()
 export class AppLoggerService extends ConsoleLogger {
   private readonly logger: Logger;
-  private readonly instanceId =
-    process.env.INSTANCE_ID ?? `product-service-${process.pid}`;
 
-  constructor() {
+  constructor(@Inject(AppConfigService) config: AppConfigService) {
     super();
 
     this.logger = pino({
-      level: process.env.LOG_LEVEL ?? "info",
+      level: config.logLevel,
       base: {
         service: "product-service",
-        instanceId: this.instanceId,
+        instanceId: config.instanceId,
       },
       timestamp: pino.stdTimeFunctions.isoTime,
     });

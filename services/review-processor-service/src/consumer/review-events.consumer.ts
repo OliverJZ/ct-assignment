@@ -8,6 +8,7 @@ import {
 import type { OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Kafka, logLevel } from "kafkajs";
 
+import { AppConfigService } from "../config/app-config";
 import { AppLoggerService } from "../observability/logger.service";
 import { MetricsService } from "../observability/metrics.service";
 import { RatingProjectionService } from "../rating-projection/rating-projection.service";
@@ -22,47 +23,53 @@ type ReviewEvent = {
   reviewId: string;
 };
 
-const REVIEW_EVENTS_TOPIC = process.env.REVIEW_EVENTS_TOPIC ?? "review-events";
-const REVIEW_CONSUMER_GROUP =
-  process.env.REVIEW_CONSUMER_GROUP ?? "review-processor";
-const REDPANDA_BROKERS = (process.env.REDPANDA_BROKERS ?? "localhost:19092")
-  .split(",")
-  .map((broker) => broker.trim())
-  .filter(Boolean);
 const tracer = trace.getTracer("review-processor-consumer");
 
 @Injectable()
 export class ReviewEventsConsumer implements OnModuleInit, OnModuleDestroy {
-  private readonly kafka = new Kafka({
-    clientId: "review-processor-service",
-    brokers: REDPANDA_BROKERS,
-    logLevel: logLevel.NOTHING,
-  });
+  private readonly kafka: Kafka;
 
-  private readonly consumer = this.kafka.consumer({
-    groupId: REVIEW_CONSUMER_GROUP,
-  });
+  private readonly consumer;
+
+  private readonly reviewEventsTopic: string;
+
+  private readonly reviewConsumerGroup: string;
+
+  private readonly redpandaBrokers: string[];
 
   constructor(
+    @Inject(AppConfigService) config: AppConfigService,
     @Inject(AppLoggerService)
     private readonly logger: AppLoggerService,
     @Inject(MetricsService)
     private readonly metrics: MetricsService,
     @Inject(RatingProjectionService)
     private readonly ratingProjectionService: RatingProjectionService,
-  ) {}
+  ) {
+    this.kafka = new Kafka({
+      clientId: "review-processor-service",
+      brokers: config.redpandaBrokers,
+      logLevel: logLevel.NOTHING,
+    });
+    this.consumer = this.kafka.consumer({
+      groupId: config.reviewConsumerGroup,
+    });
+    this.reviewEventsTopic = config.reviewEventsTopic;
+    this.reviewConsumerGroup = config.reviewConsumerGroup;
+    this.redpandaBrokers = config.redpandaBrokers;
+  }
 
   async onModuleInit() {
     await this.consumer.connect();
     await this.consumer.subscribe({
-      topic: REVIEW_EVENTS_TOPIC,
+      topic: this.reviewEventsTopic,
       fromBeginning: true,
     });
 
     this.logger.info("Subscribed review processor consumer", {
-      topic: REVIEW_EVENTS_TOPIC,
-      groupId: REVIEW_CONSUMER_GROUP,
-      brokers: REDPANDA_BROKERS,
+      topic: this.reviewEventsTopic,
+      groupId: this.reviewConsumerGroup,
+      brokers: this.redpandaBrokers,
     });
 
     await this.consumer.run({

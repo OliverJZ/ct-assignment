@@ -4,6 +4,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 
 import { AppModule } from "./app.module";
+import { AppConfigService } from "./config/app-config";
 import { AppLoggerService } from "./observability/logger.service";
 import { RequestLoggingInterceptor } from "./observability/request-logging.interceptor";
 import { initializeTracing } from "./observability/tracing";
@@ -12,6 +13,7 @@ async function bootstrap() {
   await initializeTracing();
 
   const app = await NestFactory.create(AppModule);
+  const config = app.get(AppConfigService);
   app.useLogger(app.get(AppLoggerService));
 
   app.useGlobalPipes(
@@ -24,7 +26,7 @@ async function bootstrap() {
 
   app.useGlobalInterceptors(app.get(RequestLoggingInterceptor));
 
-  await app.listen(process.env.PRODUCT_SERVICE_PORT ?? 3000, "0.0.0.0");
+  await app.listen(config.port, "0.0.0.0");
 }
 
 bootstrap();

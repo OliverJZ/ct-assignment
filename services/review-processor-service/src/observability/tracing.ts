@@ -7,6 +7,8 @@ import {
   ATTR_SERVICE_NAME,
 } from "@opentelemetry/semantic-conventions";
 
+import { loadReviewProcessorConfig } from "../config/app-config";
+
 let sdk: NodeSDK | null = null;
 
 export async function initializeTracing(): Promise<void> {
@@ -14,18 +16,15 @@ export async function initializeTracing(): Promise<void> {
     return;
   }
 
-  const endpoint =
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://localhost:4318";
-  const instanceId =
-    process.env.INSTANCE_ID ?? `review-processor-service-${process.pid}`;
+  const config = loadReviewProcessorConfig();
 
   sdk = new NodeSDK({
     resource: new Resource({
       [ATTR_SERVICE_NAME]: "review-processor-service",
-      [ATTR_SERVICE_INSTANCE_ID]: instanceId,
+      [ATTR_SERVICE_INSTANCE_ID]: config.instanceId,
     }),
     traceExporter: new OTLPTraceExporter({
-      url: `${endpoint}/v1/traces`,
+      url: `${config.otelExporterEndpoint}/v1/traces`,
     }),
     instrumentations: [getNodeAutoInstrumentations()],
   });

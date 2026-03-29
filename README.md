@@ -102,21 +102,6 @@ infra/
   docker/
 ```
 
-## Assignment Checklist
-
-- Product CRUD API: implemented
-- Product payload does not return reviews: implemented
-- Review create, edit, delete API: implemented
-- Product review listing endpoint: implemented
-- Product service notifies review processor on review changes: implemented through `review-events`
-- Review processor consumes events and persists average rating: implemented
-- Review processor supports 2+ instances: implemented through Kafka consumer group membership
-- Concurrent event processing design: implemented through partitioned topic consumption keyed by `productId`
-- Product reviews and average ratings are cached: implemented with Redis
-- Docker Compose project setup: implemented
-- TypeScript and lint configuration: implemented
-- Documentation of thought process and tradeoffs: implemented in this `README.md`
-
 ## Current API surface
 
 Implemented in `product-service`:
@@ -144,9 +129,13 @@ Current API behavior:
 Preferred full-stack startup:
 
 ```bash
+node --version
+npm install
 cp .env.example .env
 npm run compose:full
 ```
+
+Local development and the Docker runtime assume Node.js 22.
 
 This starts infrastructure, both services, a second review-processor instance, and the observability stack.
 
@@ -170,6 +159,7 @@ Development mode is still available if needed by running infrastructure in Docke
 Start the stack:
 
 ```bash
+npm install
 cp .env.example .env
 npm run compose:full
 ```
@@ -357,6 +347,7 @@ npm run compose:up
 If you want to run services locally instead of in Docker, the supporting workflow is:
 
 ```bash
+npm install
 cp .env.example .env
 npm run compose:infra
 npm run compose:observability
