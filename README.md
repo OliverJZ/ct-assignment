@@ -88,7 +88,7 @@ Observability is treated as a core quality attribute, not end-stage polish. The 
 - I prefer one PostgreSQL instance with clear table ownership for assignment delivery speed, rather than introducing separate databases too early
 - I prefer full rating recomputation per affected product over fragile incremental math because correctness and explainability matter more here than micro-optimization
 - I prefer Redpanda for local setup simplicity, while keeping the message contract Kafka-compatible
-- I am not introducing an outbox pattern in the first messaging slice; review writes will commit first and then publish events, which is simpler but not fully failure-proof if the broker is unavailable at publish time
+- I am not introducing an outbox pattern in the first messaging slice, review writes will commit first and then publish events, which is simpler but not fully failure-proof if the broker is unavailable at publish time
 
 ## Workspace layout
 
@@ -129,8 +129,6 @@ Current API behavior:
 Preferred full-stack startup:
 
 ```bash
-node --version
-npm install
 cp .env.example .env
 npm run compose:full
 ```
@@ -159,7 +157,6 @@ Development mode is still available if needed by running infrastructure in Docke
 Start the stack:
 
 ```bash
-npm install
 cp .env.example .env
 npm run compose:full
 ```
@@ -269,7 +266,7 @@ Then open:
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3002` (`admin` / `admin`)
 - Tempo API: `http://localhost:3200` (Grafana is the primary UI for trace exploration)
-- Loki: `http://localhost:3100`
+- Loki: `http://localhost:3100` (Grafana is the primary UI for loki logs)
 
 The services expose metrics at:
 
@@ -347,6 +344,7 @@ npm run compose:up
 If you want to run services locally instead of in Docker, the supporting workflow is:
 
 ```bash
+node --version #(should be 22)
 npm install
 cp .env.example .env
 npm run compose:infra

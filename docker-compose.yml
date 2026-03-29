@@ -56,19 +56,16 @@ services:
 
   redpanda-init:
     image: docker.redpanda.com/redpandadata/redpanda:v24.3.5
+    environment:
+      REVIEW_EVENTS_TOPIC: ${REVIEW_EVENTS_TOPIC:-review-events}
+      REVIEW_EVENTS_PARTITIONS: ${REVIEW_EVENTS_PARTITIONS:-4}
+      RPK_BROKERS: redpanda:9092
     depends_on:
       redpanda:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
-    command: >-
-      'if ! rpk -X brokers=redpanda:9092 topic describe review-events >/tmp/review-events.txt 2>&1; then
-        rpk -X brokers=redpanda:9092 topic create review-events --partitions ${REVIEW_EVENTS_PARTITIONS:-4} --replicas 1;
-      fi;
-      current_partitions=$$(rpk -X brokers=redpanda:9092 topic describe review-events | grep "^PARTITIONS" | tr -s " " | cut -d" " -f2);
-      if [ "$${current_partitions:-0}" -lt ${REVIEW_EVENTS_PARTITIONS:-4} ]; then
-        rpk -X brokers=redpanda:9092 topic add-partitions review-events --num $$(( ${REVIEW_EVENTS_PARTITIONS:-4} - current_partitions ));
-      fi;
-      rpk -X brokers=redpanda:9092 topic describe review-events'
+    volumes:
+      - ./infra/scripts/ensure-review-events-topic.sh:/scripts/ensure-review-events-topic.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/ensure-review-events-topic.sh"]
 
   product-service:
     build:
