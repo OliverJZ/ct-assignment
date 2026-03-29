@@ -13,17 +13,13 @@ Build a maintainable TypeScript solution with:
 
 ## Technical direction
 
-- `NestJS` for both services
+- `Node.js` for both services using `NestJS`, `KafkaJS`, and `Prisma`
 - `PostgreSQL` for canonical and derived persistent storage
 - `Redis` for shared caching
 - `Redpanda` as the local Kafka-compatible broker
 - `OpenTelemetry`, `Prometheus`, `Loki`, `Tempo`, and `Grafana` for local observability
 
 ## Thought process and design decisions
-
-### Why two services
-
-The assignment explicitly separates product-facing CRUD from rating computation. I keep those responsibilities split so the API service remains the source of truth for products and reviews, while the review processor owns the derived rating projection.
 
 ### Why event-driven communication
 
@@ -140,7 +136,7 @@ Current API behavior:
 - product responses do not embed reviews
 - product list and review list are paginated
 - review `rating` is validated as an integer in the range `1..5`
-- `averageRating` is exposed as derived state and may be `null` until the processor is implemented
+- `averageRating` is exposed as derived state and may be `null` when a product has no reviews yet
 - product detail reads and review-list reads are cached in Redis
 
 ## How To Run
@@ -148,6 +144,7 @@ Current API behavior:
 Preferred full-stack startup:
 
 ```bash
+cp .env.example .env
 npm run compose:full
 ```
 
@@ -163,7 +160,7 @@ Primary endpoints:
 To stop everything:
 
 ```bash
-npm run compose:down
+npm run compose:full:down
 ```
 
 Development mode is still available if needed by running infrastructure in Docker and services locally.
@@ -173,6 +170,7 @@ Development mode is still available if needed by running infrastructure in Docke
 Start the stack:
 
 ```bash
+cp .env.example .env
 npm run compose:full
 ```
 
@@ -242,7 +240,7 @@ This means review-list cache invalidation is immediate on canonical writes, whil
 
 ## Observability strategy
 
-The current observability slice focuses on structured logging and metrics first.
+The observability rollout is layered: logs and metrics first, then distributed tracing.
 
 - both services emit structured JSON logs through `pino`
 - `product-service` logs HTTP requests with request IDs, route, status code, and duration
@@ -262,8 +260,6 @@ Current metrics coverage includes:
 - review-processor event counts and processing duration
 - review-processor cache invalidation counts
 
-The observability rollout is layered: logs and metrics first, then distributed tracing.
-
 Tracing is now enabled with OpenTelemetry. The current tracing flow covers:
 
 - incoming HTTP requests into `product-service`
@@ -275,14 +271,14 @@ Tracing is now enabled with OpenTelemetry. The current tracing flow covers:
 To start the current metrics stack locally:
 
 ```bash
-docker compose --profile observability up -d prometheus tempo loki otel-collector promtail grafana
+npm run compose:observability
 ```
 
 Then open:
 
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3002` (`admin` / `admin`)
-- Tempo: `http://localhost:3200`
+- Tempo API: `http://localhost:3200` (Grafana is the primary UI for trace exploration)
 - Loki: `http://localhost:3100`
 
 The services expose metrics at:
@@ -298,7 +294,7 @@ To generate demo traffic for logs, metrics, cache activity, and traces:
 npm run demo:traffic
 ```
 
-The script creates a product, creates reviews, updates one review, deletes both reviews, and fetches product/review endpoints between mutations so the observability stack has useful activity to display.
+The script creates multiple products, creates reviews for each, updates one review per product, deletes one review per product, and fetches product/review endpoints between mutations so the observability stack has useful activity to display.
 
 For log inspection in Grafana:
 
@@ -317,7 +313,11 @@ The review processor scales horizontally through a shared Kafka consumer group, 
 - messages are keyed by `productId`, which preserves ordering for one product while allowing different products to be processed in parallel
 - heavier traffic alone does not create parallelism if the topic only has a single partition
 
-For local verification with Redpanda, increase the partition count for `review-events` before running multiple processor instances.
+For local verification with Redpanda, ensure the topic has enough partitions before running multiple processor instances:
+
+```bash
+npm run topic:ensure
+```
 
 ## Data model
 
@@ -351,15 +351,17 @@ The full Docker startup includes:
 If you want only the core runtime without observability, use:
 
 ```bash
-npm run compose:up -- --build
+npm run compose:up
 ```
 
 If you want to run services locally instead of in Docker, the supporting workflow is:
 
 ```bash
+cp .env.example .env
 npm run compose:infra
 npm run compose:observability
 npm run topic:ensure
+npm run prisma:migrate:dev
 npm run dev:product
 npm run dev:processor
 ```
@@ -369,6 +371,10 @@ For a second processor instance:
 ```bash
 INSTANCE_ID=processor-b REVIEW_PROCESSOR_PORT=3003 npm run dev:processor
 ```
+
+The full observability stack is configured around the containerized runtime path. If services are run locally instead of in Docker, the applications still expose logs, traces, and `/metrics`, but the Dockerized Prometheus scrape targets will not match those local service endpoints unless the observability configuration is adjusted.
+
+In the full Docker startup path, PostgreSQL creates the database and the service containers apply Prisma migrations automatically. In the local-service path, you should create `.env` from `.env.example` and run Prisma migrations yourself before starting the apps.
 
 Useful broker inspection commands:
 
@@ -385,9 +391,3 @@ Primary service endpoints in the full Docker setup:
 - Grafana: `http://localhost:3002`
 - Loki: `http://localhost:3100`
 - Tempo: `http://localhost:3200`
-
-## Delivery notes
-
-The final repository should be easy to run, easy to review, and explicit about design choices. This `README.md` is intended to hold the implementation rationale and tradeoffs required by the assignment, so reviewer-facing documentation stays close to the code.
-
-As implementation progresses, this file should be updated alongside the code so the documented architecture, tradeoffs, and known limitations stay consistent with the actual repository state.

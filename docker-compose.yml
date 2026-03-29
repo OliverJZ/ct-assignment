@@ -10,11 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ct_assignment}",
-        ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ct_assignment}" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -23,9 +19,9 @@ services:
     image: redis:7-alpine
     ports:
       - "${REDIS_PORT:-6379}:6379"
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: [ "redis-server", "--save", "", "--appendonly", "no" ]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -46,10 +42,10 @@ services:
       - --pandaproxy-addr=internal://0.0.0.0:8082
       - --advertise-pandaproxy-addr=internal://redpanda:8082
     ports:
-      - "19092:19092"
-      - "9644:9644"
+      - "${REDPANDA_EXTERNAL_PORT:-19092}:19092"
+      - "${REDPANDA_ADMIN_PORT:-9644}:9644"
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -q healthy"]
+      test: [ "CMD-SHELL", "rpk cluster health | grep -q healthy" ]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -59,15 +55,13 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint: [ "/bin/sh", "-c" ]
     command: >-
-      'current_partitions=$$(rpk -X brokers=redpanda:9092 topic describe review-events 2>/dev/null | grep "^PARTITIONS" | tr -s " " | cut -d" " -f2);
-      if [ -z "$$current_partitions" ]; then
+      'current_partitions=$$(rpk -X brokers=redpanda:9092 topic describe review-events 2>/dev/null | grep "^PARTITIONS" | tr -s " " | cut -d" " -f2); if [ -z "$$current_partitions" ]; then
         rpk -X brokers=redpanda:9092 topic create review-events --partitions 4 --replicas 1;
       elif [ "$$current_partitions" -lt 4 ]; then
         rpk -X brokers=redpanda:9092 topic add-partitions review-events --num $$((4 - $$current_partitions));
-      fi;
-      rpk -X brokers=redpanda:9092 topic describe review-events'
+      fi; rpk -X brokers=redpanda:9092 topic describe review-events'
 
   product-service:
     build:
@@ -85,6 +79,12 @@ services:
       INSTANCE_ID: product-service
     ports:
       - "3000:3000"
+    healthcheck:
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,6 +110,12 @@ services:
       INSTANCE_ID: processor-a
     ports:
       - "3001:3001"
+    healthcheck:
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,6 +139,12 @@ services:
       REVIEW_CONSUMER_GROUP: review-processor
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       INSTANCE_ID: processor-b
+    healthcheck:
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,7 +154,7 @@ services:
         condition: service_completed_successfully
 
   prometheus:
-    profiles: ["observability"]
+    profiles: [ "observability" ]
     image: prom/prometheus:v3.2.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -152,39 +164,39 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
 
   tempo:
-    profiles: ["observability"]
+    profiles: [ "observability" ]
     image: grafana/tempo:2.7.1
-    command: ["-config.file=/etc/tempo.yaml"]
+    command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
       - ./infra/docker/tempo/config.yaml:/etc/tempo.yaml:ro
     ports:
       - "${TEMPO_PORT:-3200}:3200"
 
   loki:
-    profiles: ["observability"]
+    profiles: [ "observability" ]
     image: grafana/loki:3.4.1
-    command: ["-config.file=/etc/loki/config.yaml"]
+    command: [ "-config.file=/etc/loki/config.yaml" ]
     volumes:
       - ./infra/docker/loki/config.yaml:/etc/loki/config.yaml:ro
     ports:
       - "${LOKI_PORT:-3100}:3100"
 
   otel-collector:
-    profiles: ["observability"]
+    profiles: [ "observability" ]
     image: otel/opentelemetry-collector-contrib:0.121.0
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    command: [ "--config=/etc/otelcol-contrib/config.yaml" ]
     volumes:
       - ./infra/docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
+      - "${OTEL_COLLECTOR_GRPC_PORT:-4317}:4317"
+      - "${OTEL_COLLECTOR_HTTP_PORT:-4318}:4318"
     depends_on:
       - tempo
 
   promtail:
-    profiles: ["observability"]
+    profiles: [ "observability" ]
     image: grafana/promtail:3.4.1
-    command: ["-config.file=/etc/promtail/config.yaml"]
+    command: [ "-config.file=/etc/promtail/config.yaml" ]
     volumes:
       - ./infra/docker/promtail/config.yaml:/etc/promtail/config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
@@ -192,7 +204,7 @@ services:
       - loki
 
   grafana:
-    profiles: ["observability"]
+    profiles: [ "observability" ]
     image: grafana/grafana:11.5.2
     environment:
       GF_SECURITY_ADMIN_USER: admin
